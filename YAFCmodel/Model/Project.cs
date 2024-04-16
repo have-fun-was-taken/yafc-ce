@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Runtime.Serialization;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace YAFC.Model {
     public class Project : ModelObject {
@@ -102,19 +103,33 @@ namespace YAFC.Model {
             return proj;
         }
 
-        public void Save(string fileName) {
+        public static void QueueAutosave() {
+            if (current.preferences.enableAutosave && !string.IsNullOrEmpty(current.attachedFileName)) {
+                /*
+                 * We must wait for the save method to finish before we can continue. This
+                 * prevents possible changes to the project while it's being saved.
+                 *
+                 * This solution is by far not ideal, but as long as we don't have
+                 * proper async/await support in the UI, it's the best we can do.
+                 *
+                 * - 2024-02-13, shihan42
+                 */
+                Task saveTask = current.Save(current.attachedFileName);
+                saveTask.Wait();
+            }
+        }
+
+        public async Task Save(string fileName) {
             if (lastSavedVersion == projectVersion && fileName == attachedFileName) {
                 return;
             }
-
             using (MemoryStream ms = new MemoryStream()) {
-                using (Utf8JsonWriter writer = new Utf8JsonWriter(ms, JsonUtils.DefaultWriterOptions)) {
+                await using (Utf8JsonWriter writer = new Utf8JsonWriter(ms, JsonUtils.DefaultWriterOptions)) {
                     SerializationMap<Project>.SerializeToJson(this, writer);
                 }
-
                 ms.Position = 0;
-                using FileStream fs = new FileStream(fileName, FileMode.Create, FileAccess.Write);
-                ms.CopyTo(fs);
+                await using FileStream fs = new FileStream(fileName, FileMode.Create, FileAccess.Write);
+                await ms.CopyToAsync(fs);
             }
             attachedFileName = fileName;
             lastSavedVersion = projectVersion;
@@ -195,6 +210,7 @@ namespace YAFC.Model {
         public HashSet<FactorioObject> sourceResources { get; } = new HashSet<FactorioObject>();
         public HashSet<FactorioObject> favorites { get; } = new HashSet<FactorioObject>();
         public Technology targetTechnology { get; set; }
+        public bool enableAutosave { get; set; } = true;
 
         protected internal override void AfterDeserialize() {
             base.AfterDeserialize();

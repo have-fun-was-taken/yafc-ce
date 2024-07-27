@@ -1,14 +1,3 @@
-## OSX installation instructions
-- [Install dotnet core (v6.0 or later)](https://dotnet.microsoft.com/download)
-- [Install brew](https://brew.sh/)
-- Install SDL2 using brew (type the following in the terminal):
-  - `brew install SDL2`
-	- `brew install SDL2_image`
-	- `brew install SDL2_ttf`
-	- For reference, have following libraries: libSDL2.dylib, libSDL2_ttf.dylib, libSDL2_image.dylib
-- To run either use `dotnet Yafc.dll` in the terminal, or run `Yafc` as an executable
-- Make sure you have OpenGL available
-
 ## Linux installation instructions
 
 ### Arch 
@@ -31,3 +20,14 @@ In general, ensure you have SDL2, OpenGL and dotnet 6 or later. Use the `Yafc` e
 
 ### Flathub
 Note that [the version available on Flathub](https://flathub.org/apps/details/com.github.petebuffon.yafc) is not the Community Edition. Its repo can be found at https://github.com/petebuffon/yafc. 
+
+## OSX installation instructions
+- [Install dotnet core (v6.0 or later)](https://dotnet.microsoft.com/download)
+- [Install brew](https://brew.sh/)
+- Install SDL2 using brew (type the following in the terminal):
+  - `brew install SDL2`
+	- `brew install SDL2_image`
+	- `brew install SDL2_ttf`
+	- For reference, have following libraries: libSDL2.dylib, libSDL2_ttf.dylib, libSDL2_image.dylib
+- To run either use `dotnet Yafc.dll` in the terminal, or run `Yafc` as an executable
+- Make sure you have OpenGL available

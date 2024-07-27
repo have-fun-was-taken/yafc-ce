@@ -5,12 +5,14 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using SDL2;
+using Serilog;
 using Yafc.Model;
 using Yafc.Parser;
 using Yafc.UI;
 
 namespace Yafc {
     public class WelcomeScreen : WindowUtility, IProgress<(string, string)>, IKeyboardFocus {
+        private readonly ILogger logger = Logging.GetLogger<WelcomeScreen>();
         private bool loading;
         private string? currentLoad1, currentLoad2;
         private string path = "", dataPath = "", modsPath = "";
@@ -69,9 +71,9 @@ namespace Yafc {
             IconCollection.ClearCustomIcons();
             RenderingUtils.SetColorScheme(Preferences.Instance.darkMode);
 
-            recentProjectScroll = new ScrollArea(20f, BuildRecentProjectList, InputSystem, collapsible: true);
-            languageScroll = new ScrollArea(20f, LanguageSelection, InputSystem, collapsible: true);
-            errorScroll = new ScrollArea(20f, BuildError, InputSystem, collapsible: true);
+            recentProjectScroll = new ScrollArea(20f, BuildRecentProjectList, collapsible: true);
+            languageScroll = new ScrollArea(20f, LanguageSelection, collapsible: true);
+            errorScroll = new ScrollArea(20f, BuildError, collapsible: true);
             Create("Welcome to YAFC CE v" + YafcLib.version.ToString(3), 45, null);
 
             if (cliProject != null && !string.IsNullOrEmpty(cliProject.dataPath)) {
@@ -81,9 +83,8 @@ namespace Yafc {
             else {
                 ProjectDefinition? lastProject = Preferences.Instance.recentProjects.FirstOrDefault();
                 SetProject(lastProject);
+                InputSystem.Instance.SetDefaultKeyboardFocus(this);
             }
-
-            InputSystem.SetDefaultKeyboardFocus(this);
         }
 
         private void BuildError(ImGui gui) {
@@ -141,7 +142,10 @@ namespace Yafc {
                     gui.BuildText("In-game objects language:");
                 }
 
-                using (gui.EnterRow()) {
+                using (gui.EnterRowWithHelpIcon("""
+                        If checked, YAFC will only suggest production or consumption recipes that have a net production or consumption of that item or fluid.
+                        For example, kovarex enrichment will not be suggested when adding recipes that produce U-238 or consume U-235.
+                        """, false)) {
                     gui.BuildCheckBox("Use net production/consumption when analyzing recipes", netProduction, out netProduction);
                 }
 
@@ -327,7 +331,7 @@ namespace Yafc {
                 ErrorCollector collector = new ErrorCollector();
                 var project = FactorioDataSource.Parse(dataPath, modsPath, projectPath, expensiveRecipes, netProduction, this, collector, Preferences.Instance.language);
                 await Ui.EnterMainThread();
-                Console.WriteLine("Opening main screen");
+                logger.Information("Opening main screen");
                 _ = new MainScreen(displayIndex, project);
                 if (collector.severity > ErrorSeverity.None) {
                     ErrorListPanel.Show(collector);
@@ -335,7 +339,7 @@ namespace Yafc {
 
                 Close();
                 GC.Collect();
-                Console.WriteLine("GC: " + GC.GetTotalMemory(false));
+                logger.Information("GC: {TotalMemory}", GC.GetTotalMemory(false));
             }
             catch (Exception ex) {
                 await Ui.EnterMainThread();
@@ -408,9 +412,9 @@ namespace Yafc {
         public bool KeyDown(SDL.SDL_Keysym key) {
             if (canCreate && key.scancode is SDL.SDL_Scancode.SDL_SCANCODE_RETURN or SDL.SDL_Scancode.SDL_SCANCODE_RETURN2 or SDL.SDL_Scancode.SDL_SCANCODE_KP_ENTER) {
                 LoadProject();
+                return true;
             }
-
-            return true;
+            return false;
         }
         public bool TextInput(string input) => false;
         public bool KeyUp(SDL.SDL_Keysym key) => false;

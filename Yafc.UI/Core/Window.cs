@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Numerics;
 using SDL2;
+using Serilog;
 
 namespace Yafc.UI {
     public abstract class Window : IDisposable {
+        private static readonly ILogger logger = Logging.GetLogger<Window>();
+
         public readonly ImGui rootGui;
         internal IntPtr window;
         /// <summary>Window icon, singleton so it is reused for all windows</summary>
@@ -13,7 +16,6 @@ namespace Yafc.UI {
         internal bool repaintRequired = true;
         internal bool visible;
         internal bool closed;
-        internal bool active;
         internal long nextRepaintTime = long.MaxValue;
         internal float pixelsPerUnit;
         public virtual SchemeColor backgroundColor => SchemeColor.Background;
@@ -28,13 +30,10 @@ namespace Yafc.UI {
         public int displayIndex => SDL.SDL_GetWindowDisplayIndex(window);
         public int repaintCount { get; private set; }
 
-        public InputSystem InputSystem { get; } = new();
-
         public Vector2 size => contentSize;
 
         public virtual bool preventQuit => false;
-
-        internal Window(Padding padding) => rootGui = new ImGui(Build, padding, InputSystem);
+        internal Window(Padding padding) => rootGui = new ImGui(Build, padding);
 
         internal void Create() {
             if (surface is null) { throw new InvalidOperationException($"surface must be set by a derived class before calling {nameof(Create)}."); }
@@ -54,7 +53,7 @@ namespace Yafc.UI {
                 icon = SDL_image.IMG_Load("image.ico");
                 if (icon == IntPtr.Zero) {
                     string error = SDL.SDL_GetError();
-                    Console.WriteLine("Failed to load application icon: " + error);
+                    logger.Warning("Failed to load application icon: {error}", error);
                 }
             }
 
@@ -148,7 +147,6 @@ namespace Yafc.UI {
 
         protected internal virtual void Close() {
             visible = false;
-            active = false;
             closed = true;
             surface?.Dispose();
             SDL.SDL_DestroyWindow(window);
@@ -165,8 +163,9 @@ namespace Yafc.UI {
             }
         }
 
-        public virtual void FocusLost() => active = false;
-        public void FocusGained() => active = true;
+
+        public virtual void FocusLost() { }
+        public virtual void Minimized() { }
 
         public void SetNextRepaint(long nextRepaintTime) {
             if (this.nextRepaintTime > nextRepaintTime) {
@@ -180,7 +179,7 @@ namespace Yafc.UI {
         }
 
         public void ShowTooltip(ImGui targetGui, Rect target, GuiBuilder builder, float width = 20f) {
-            simpleTooltip ??= new SimpleTooltip(InputSystem);
+            simpleTooltip ??= new SimpleTooltip();
             simpleTooltip.Show(builder, targetGui, target, width);
             ShowTooltip(simpleTooltip);
 
@@ -192,7 +191,7 @@ namespace Yafc.UI {
         }
 
         public void ShowDropDown(ImGui targetGui, Rect target, GuiBuilder builder, Padding padding, float width = 20f) {
-            simpleDropDown ??= new SimpleDropDown(InputSystem);
+            simpleDropDown ??= new SimpleDropDown();
             simpleDropDown.SetPadding(padding);
             simpleDropDown.SetFocus(targetGui, target, builder, width);
             ShowDropDown(simpleDropDown);
@@ -222,7 +221,7 @@ namespace Yafc.UI {
         protected abstract void BuildContents(ImGui gui);
         public virtual void Dispose() => rootGui.Dispose();
 
-        internal ImGui.DragOverlay GetDragOverlay() => draggingOverlay ??= new ImGui.DragOverlay(InputSystem);
+        internal ImGui.DragOverlay GetDragOverlay() => draggingOverlay ??= new ImGui.DragOverlay();
         protected internal virtual void WindowMaximized() { }
         protected internal virtual void WindowRestored() { }
     }

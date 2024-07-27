@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Google.OrTools.LinearSolver;
+using Serilog;
 using Yafc.UI;
 
 namespace Yafc.Model {
@@ -15,6 +17,7 @@ namespace Yafc.Model {
     }
 
     public class ProductionTable : ProjectPageContents, IComparer<ProductionTableFlow>, IElementGroup<RecipeRow> {
+        private static readonly ILogger logger = Logging.GetLogger<ProductionTable>();
         [SkipSerialization] public Dictionary<Goods, ProductionLink> linkMap { get; } = [];
         List<RecipeRow> IElementGroup<RecipeRow>.elements => recipes;
         [NoUndo]
@@ -183,9 +186,14 @@ match:
             for (int i = 0; i < recipe.recipe.ingredients.Length; i++) {
                 var ingredient = recipe.recipe.ingredients[i];
                 var linkedGoods = recipe.links.ingredientGoods[i];
-                _ = summer.TryGetValue(linkedGoods, out var prev);
-                prev.cons += recipe.recipesPerSecond * ingredient.amount;
-                summer[linkedGoods] = prev;
+                if (linkedGoods is not null) {
+                    _ = summer.TryGetValue(linkedGoods, out var prev);
+                    prev.cons += recipe.recipesPerSecond * ingredient.amount;
+                    summer[linkedGoods] = prev;
+                }
+                else {
+                    Debug.WriteLine("linkedGoods should not have been null here.");
+                }
             }
 
             if (recipe.fuel != null && !float.IsNaN(recipe.parameters.fuelUsagePerSecondPerBuilding)) {
@@ -402,7 +410,7 @@ match:
 
                 result = productionTableSolver.Solve();
 
-                Console.WriteLine("Solver finished with result " + result);
+                logger.Information("Solver finished with result {result}", result);
                 await Ui.EnterMainThread();
 
                 if (result is Solver.ResultStatus.OPTIMAL or Solver.ResultStatus.FEASIBLE) {

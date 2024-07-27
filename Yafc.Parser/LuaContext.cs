@@ -4,7 +4,9 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using Serilog;
 using Yafc.Model;
+using Yafc.UI;
 
 namespace Yafc.Parser {
     public class LuaException(string luaMessage) : Exception(luaMessage) {
@@ -49,13 +51,13 @@ namespace Yafc.Parser {
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
         private static partial void lua_close(IntPtr state);
 
-        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Custom, StringMarshallingCustomType = typeof(System.Runtime.InteropServices.Marshalling.AnsiStringMarshaller))]
+        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Utf8)]
         [UnmanagedCallConv(CallConvs = new System.Type[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         private static partial Result luaL_loadbufferx(IntPtr state, in byte buf, IntPtr sz, string name, string? mode);
         [LibraryImport(LUA)]
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
         private static partial Result lua_pcallk(IntPtr state, int nargs, int nresults, int msgh, IntPtr ctx, IntPtr k);
-        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Custom, StringMarshallingCustomType = typeof(System.Runtime.InteropServices.Marshalling.AnsiStringMarshaller))]
+        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Utf8)]
         [UnmanagedCallConv(CallConvs = new System.Type[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         private static partial void luaL_traceback(IntPtr state, IntPtr state2, string? msg, int level);
 
@@ -72,10 +74,10 @@ namespace Yafc.Parser {
         [UnmanagedCallConv(CallConvs = new System.Type[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         private static partial double lua_tonumberx(IntPtr state, int idx, [MarshalAs(UnmanagedType.Bool)] out bool isnum);
 
-        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Custom, StringMarshallingCustomType = typeof(System.Runtime.InteropServices.Marshalling.AnsiStringMarshaller))]
+        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Utf8)]
         [UnmanagedCallConv(CallConvs = new System.Type[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         private static partial int lua_getglobal(IntPtr state, string var);
-        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Custom, StringMarshallingCustomType = typeof(System.Runtime.InteropServices.Marshalling.AnsiStringMarshaller))]
+        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Utf8)]
         [UnmanagedCallConv(CallConvs = new System.Type[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         private static partial void lua_setglobal(IntPtr state, string name);
         [LibraryImport(LUA)]
@@ -88,7 +90,7 @@ namespace Yafc.Parser {
         [LibraryImport(LUA)]
         [UnmanagedCallConv(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvCdecl)])]
         private static partial void lua_pushnil(IntPtr state);
-        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Custom, StringMarshallingCustomType = typeof(System.Runtime.InteropServices.Marshalling.AnsiStringMarshaller))]
+        [LibraryImport(LUA, StringMarshalling = StringMarshalling.Utf8)]
         [UnmanagedCallConv(CallConvs = new System.Type[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
         private static partial IntPtr lua_pushstring(IntPtr state, string s);
         [LibraryImport(LUA)]
@@ -136,6 +138,8 @@ namespace Yafc.Parser {
         private readonly List<(string mod, string name)> fullChunkNames = [];
         private readonly Dictionary<string, int> required = [];
         private readonly Dictionary<(string mod, string name), byte[]> modFixes = [];
+
+        private static readonly ILogger logger = Logging.GetLogger<LuaContext>();
 
         public LuaContext() {
             L = luaL_newstate();
@@ -195,7 +199,7 @@ namespace Yafc.Parser {
         }
 
         private int Log(IntPtr lua) {
-            Console.WriteLine(GetString(1));
+            logger.Information(GetString(1));
             return 0;
         }
         private void GetReg(int refId) {
@@ -400,8 +404,7 @@ namespace Yafc.Parser {
                 GetReg(value);
                 return 1;
             }
-            required[argument] = LUA_REFNIL;
-            Console.WriteLine("Require " + requiredFile.mod + "/" + requiredFile.path);
+            logger.Information("Require {RequiredFile}", requiredFile.mod + "/" + requiredFile.path);
             byte[] bytes = FactorioDataSource.ReadModFile(requiredFile.mod, requiredFile.path);
             if (bytes != null) {
                 _ = lua_pushstring(L, argument);
@@ -409,14 +412,14 @@ namespace Yafc.Parser {
                 int result = Exec(bytes, requiredFile.mod, requiredFile.path, argumentReg);
                 if (modFixes.TryGetValue(requiredFile, out byte[]? fix)) {
                     string modFixName = "mod-fix-" + requiredFile.mod + "." + requiredFile.path;
-                    Console.WriteLine("Running mod-fix " + modFixName);
+                    logger.Information("Running mod-fix {ModFix}", modFixName);
                     result = Exec(fix, "*", modFixName, result);
                 }
                 required[argument] = result;
                 GetReg(result);
             }
             else {
-                Console.Error.WriteLine("LUA require failed: mod " + mod + " file " + file);
+                logger.Error("LUA require failed: mod {mod}, file {file}", mod, file);
                 lua_pushnil(L);
             }
             return 1;
@@ -483,7 +486,7 @@ namespace Yafc.Parser {
                     continue;
                 }
 
-                Console.WriteLine("Executing " + mod + "/" + fileName);
+                logger.Information("Executing file {Filename}", mod + "/" + fileName);
                 _ = Exec(bytes, mod, fileName);
             }
         }

@@ -6,24 +6,24 @@ using Yafc.UI;
 
 namespace Yafc {
     public class ModuleCustomizationScreen : PseudoScreen {
+        private static readonly ModuleCustomizationScreen Instance = new ModuleCustomizationScreen();
+
         private RecipeRow? recipe;
         private ProjectModuleTemplate? template;
         private ModuleTemplate? modules;
 
         public static void Show(RecipeRow recipe) {
-            ModuleCustomizationScreen screen = new() {
-                recipe = recipe,
-                modules = recipe.modules
-            };
-            _ = MainScreen.Instance.ShowPseudoScreen(screen);
+            Instance.template = null;
+            Instance.recipe = recipe;
+            Instance.modules = recipe.modules;
+            _ = MainScreen.Instance.ShowPseudoScreen(Instance);
         }
 
         public static void Show(ProjectModuleTemplate template) {
-            ModuleCustomizationScreen screen = new() {
-                template = template,
-                modules = template.template
-            };
-            _ = MainScreen.Instance.ShowPseudoScreen(screen);
+            Instance.recipe = null;
+            Instance.template = template;
+            Instance.modules = template.template;
+            _ = MainScreen.Instance.ShowPseudoScreen(Instance);
         }
 
         public override void Build(ImGui gui) {
@@ -170,7 +170,8 @@ namespace Yafc {
                 if (evt == GoodsWithAmountEvent.LeftButtonClick) {
                     SelectSingleObjectPanel.SelectWithNone(GetModules(beacon), "Select module", sel => {
                         if (sel == null) {
-                            _ = modules.RecordUndo().list.Remove(rowCustomModule);
+                            _ = modules.RecordUndo();
+                            list.Remove(rowCustomModule);
                         }
                         else {
                             rowCustomModule.RecordUndo().module = sel;

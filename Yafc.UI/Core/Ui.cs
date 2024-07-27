@@ -1,15 +1,17 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using SDL2;
+using Serilog;
 
 namespace Yafc.UI {
     public static class Ui {
+        private static readonly ILogger logger = Logging.GetLogger(typeof(Ui));
+
         public static bool quit { get; private set; }
 
         private static readonly Dictionary<uint, Window> windows = [];
@@ -23,7 +25,7 @@ namespace Yafc.UI {
                     _ = SetProcessDpiAwareness(2);
                 }
                 catch (Exception) {
-                    Console.WriteLine("DPI awareness setup failed"); // On older versions on Windows
+                    logger.Information("DPI awareness setup failed"); // On older versions on Windows
                 }
             }
             _ = SDL.SDL_Init(SDL.SDL_INIT_VIDEO);
@@ -35,15 +37,6 @@ namespace Yafc.UI {
             SynchronizationContext.SetSynchronizationContext(new UiSynchronizationContext());
             mainThreadId = Thread.CurrentThread.ManagedThreadId;
         }
-
-        /// <summary>
-        /// The <see cref="InputSystem"/> belonging to the active window, if such a window exists. Failing that, it is the input system for the only window,
-        /// if there is exactly one window. This is the *current* active input system, and may be about to change if a new (OS-level) window is being
-        /// constructed or if the focus is changing. For this reason, try to get your InputSystem from a source that reflects the new value,
-        /// rather than the current value.
-        /// </summary>
-        [EditorBrowsable(EditorBrowsableState.Never)]
-        public static InputSystem? ActiveInputSystem => windows.Values.FirstOrDefault(w => w.active)?.InputSystem ?? (windows.Count == 1 ? windows.Values.First().InputSystem : null);
 
         public static long time { get; private set; }
         private static readonly Stopwatch timeWatch = Stopwatch.StartNew();
@@ -64,11 +57,17 @@ namespace Yafc.UI {
             }
         }
 
+        private static void RebuildTimedOutWindows() {
+            foreach (var (_, window) in windows.Where(item => item.Value.nextRepaintTime <= time)) {
+                window.Rebuild();
+            }
+        }
+
         public static void ProcessEvents() {
             try {
-                InputSystem? inputSystem = ActiveInputSystem;
-                if (inputSystem == null) { return; }
+                var inputSystem = InputSystem.Instance;
                 long minNextEvent = long.MaxValue - 1;
+                time = timeWatch.ElapsedMilliseconds;
                 foreach (var (_, window) in windows) {
                     minNextEvent = Math.Min(minNextEvent, window.nextRepaintTime);
                 }
@@ -76,9 +75,6 @@ namespace Yafc.UI {
                 long delta = Math.Min(1 + (minNextEvent - timeWatch.ElapsedMilliseconds), int.MaxValue);
                 bool hasEvents = (delta <= 0 ? SDL.SDL_PollEvent(out var evt) : SDL.SDL_WaitEventTimeout(out evt, (int)delta)) != 0;
                 time = timeWatch.ElapsedMilliseconds;
-                if (!hasEvents && time < minNextEvent) {
-                    time = minNextEvent;
-                }
 
                 while (hasEvents) {
                     switch (evt.type) {
@@ -135,10 +131,10 @@ namespace Yafc.UI {
 
                             switch (evt.window.windowEvent) {
                                 case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_ENTER:
-                                    window.InputSystem.MouseEnterWindow(window);
+                                    inputSystem.MouseEnterWindow(window);
                                     break;
                                 case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_LEAVE:
-                                    window.InputSystem.MouseExitWindow(window);
+                                    inputSystem.MouseExitWindow(window);
                                     break;
                                 case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_CLOSE:
                                     window.Close();
@@ -147,8 +143,10 @@ namespace Yafc.UI {
                                     window.FocusLost();
                                     break;
                                 case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_FOCUS_GAINED:
-                                    window.FocusGained();
                                     window.Rebuild();
+                                    break;
+                                case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_MINIMIZED:
+                                    window.Minimized();
                                     break;
                                 case SDL.SDL_WindowEventID.SDL_WINDOWEVENT_MOVED:
                                     window.WindowMoved();
@@ -163,7 +161,7 @@ namespace Yafc.UI {
                                     window.WindowRestored();
                                     break;
                                 default:
-                                    Console.WriteLine("Window event of type " + evt.window.windowEvent);
+                                    logger.Information("Window event of type {event}", evt.window.windowEvent);
                                     window.Rebuild(); // might be something like "window exposed", better to paint the UI again
                                     break;
                             }
@@ -178,12 +176,14 @@ namespace Yafc.UI {
 
                             break;
                         default:
-                            Console.WriteLine("Event of type " + evt.type);
+                            logger.Information("Event of type {event}", evt.type);
                             break;
                     }
 
                     hasEvents = SDL.SDL_PollEvent(out evt) != 0;
                 }
+                time = timeWatch.ElapsedMilliseconds;
+                RebuildTimedOutWindows();
                 inputSystem.Update();
             }
             catch (Exception ex) {

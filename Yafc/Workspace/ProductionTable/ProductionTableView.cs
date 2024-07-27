@@ -17,7 +17,10 @@ namespace Yafc {
             flatHierarchyBuilder = new FlatHierarchy<RecipeRow, ProductionTable>(grid, BuildSummary, "This is a nested group. You can drag&drop recipes here. Nested groups can have their own linked materials.");
         }
 
-        private abstract class ProductionTableDataColumn(ProductionTableView view, string header, float width, float minWidth = 0, float maxWidth = 0, bool hasMenu = true) : TextDataColumn<RecipeRow>(header, width, minWidth, maxWidth, hasMenu) {
+        /// <param name="widthStorage">If not <see langword="null"/>, names an instance property in <see cref="Preferences"/> that will be used to store the width of this column.
+        /// If the current value of the property is out of range, the initial width will be <paramref name="initialWidth"/>.</param>
+        private abstract class ProductionTableDataColumn(ProductionTableView view, string header, float initialWidth, float minWidth = 0, float maxWidth = 0, bool hasMenu = true, string? widthStorage = null)
+            : TextDataColumn<RecipeRow>(header, initialWidth, minWidth, maxWidth, hasMenu, widthStorage) {
             protected readonly ProductionTableView view = view;
         }
 
@@ -27,7 +30,7 @@ namespace Yafc {
                 gui.spacing = 0f;
                 if (row.subgroup != null) {
                     if (gui.BuildButton(row.subgroup.expanded ? Icon.ShevronDown : Icon.ShevronRight)) {
-                        if (MainScreen.Instance.InputSystem.control) {
+                        if (InputSystem.Instance.control) {
                             toggleAll(!row.subgroup.expanded, view.model);
                         }
                         else {
@@ -94,7 +97,7 @@ namespace Yafc {
             }
         }
 
-        private class RecipeColumn(ProductionTableView view) : ProductionTableDataColumn(view, "Recipe", 13f, 13f, 30f) {
+        private class RecipeColumn(ProductionTableView view) : ProductionTableDataColumn(view, "Recipe", 13f, 13f, 30f, widthStorage: nameof(Preferences.recipeColumnWidth)) {
             public override void BuildElement(ImGui gui, RecipeRow recipe) {
                 gui.spacing = 0.5f;
                 switch (gui.BuildFactorioObjectButton(recipe.recipe, 3f)) {
@@ -206,7 +209,7 @@ namespace Yafc {
                     view.model.RecordUndo().recipes.Clear();
                 }
 
-                if (MainScreen.Instance.InputSystem.control && gui.BuildButton("Add ALL recipes") && gui.CloseDropdown()) {
+                if (InputSystem.Instance.control && gui.BuildButton("Add ALL recipes") && gui.CloseDropdown()) {
                     foreach (var recipe in Database.recipes.all) {
                         if (!recipe.IsAccessible()) {
                             continue;
@@ -235,7 +238,7 @@ goodsHaveNoProduction:;
             /// <param name="table">The table that will receive the new recipes or technologies, if any are selected</param>
             private static void BuildRecipeButton(ImGui gui, ProductionTable table) {
                 if (gui.BuildButton("Add raw recipe").WithTooltip(gui, "Ctrl-click to add a technology instead") && gui.CloseDropdown()) {
-                    if (MainScreen.Instance.InputSystem.control) {
+                    if (InputSystem.Instance.control) {
                         SelectMultiObjectPanel.Select(Database.technologies.all, "Select technology", r => table.AddRecipe(r, DefaultVariantOrdering), checkMark: r => table.recipes.Any(rr => rr.recipe == r));
                     }
                     else {
@@ -364,57 +367,66 @@ goodsHaveNoProduction:;
                     }
                 }, "Select crafting entity", extra: x => DataUtils.FormatAmount(x.craftingSpeed, UnitOfMeasure.Percent));
 
-                if (recipe.fixedBuildings > 0f) {
-                    ButtonEvent evt = gui.BuildButton("Clear fixed building count");
-                    if (willResetFixed) {
-                        evt.WithTooltip(gui, "Shortcut: right-click");
+                gui.AllocateSpacing(0.5f);
+
+                using (gui.EnterRowWithHelpIcon("Tell YAFC how many buildings it must use when solving this page.\nUse this to ask questions like 'What does it take to handle the output of ten miners?'")) {
+                    gui.allocator = RectAllocator.RemainingRow;
+                    if (recipe.fixedBuildings > 0f) {
+                        ButtonEvent evt = gui.BuildButton("Clear fixed building count");
+                        if (willResetFixed) {
+                            evt.WithTooltip(gui, "Shortcut: right-click");
+                        }
+                        if (evt && gui.CloseDropdown()) {
+                            recipe.RecordUndo().fixedBuildings = 0f;
+                        }
                     }
-                    if (evt && gui.CloseDropdown()) {
-                        recipe.RecordUndo().fixedBuildings = 0f;
-                    }
-                }
-                else {
-                    if (gui.BuildButton("Set fixed building count") && gui.CloseDropdown()) {
+                    else if (gui.BuildButton("Set fixed building count") && gui.CloseDropdown()) {
                         recipe.RecordUndo().fixedBuildings = recipe.buildingCount <= 0f ? 1f : recipe.buildingCount;
                     }
                 }
 
-                if (recipe.builtBuildings != null) {
-                    ButtonEvent evt = gui.BuildButton("Clear built building count");
-                    if (willResetBuilt) {
-                        evt.WithTooltip(gui, "Shortcut: right-click");
+                using (gui.EnterRowWithHelpIcon("Tell YAFC how many of these buildings you have in your factory.\nYAFC will warn you if you need to build more buildings.")) {
+                    gui.allocator = RectAllocator.RemainingRow;
+                    if (recipe.builtBuildings != null) {
+                        ButtonEvent evt = gui.BuildButton("Clear built building count");
+                        if (willResetBuilt) {
+                            evt.WithTooltip(gui, "Shortcut: right-click");
+                        }
+                        if (evt && gui.CloseDropdown()) {
+                            recipe.RecordUndo().builtBuildings = null;
+                        }
                     }
-                    if (evt && gui.CloseDropdown()) {
-                        recipe.RecordUndo().builtBuildings = null;
-                    }
-                }
-                else {
-                    if (gui.BuildButton("Set built building count") && gui.CloseDropdown()) {
+                    else if (gui.BuildButton("Set built building count") && gui.CloseDropdown()) {
                         recipe.RecordUndo().builtBuildings = Math.Max(0, Convert.ToInt32(Math.Ceiling(recipe.buildingCount)));
                     }
                 }
 
-                if (recipe.entity != null && gui.BuildButton("Create single building blueprint") && gui.CloseDropdown()) {
-                    BlueprintEntity entity = new BlueprintEntity { index = 1, name = recipe.entity.name };
-                    if (recipe.recipe is not Mechanics) {
-                        entity.recipe = recipe.recipe.name;
-                    }
-
-                    var modules = recipe.parameters.modules.modules;
-                    if (modules != null) {
-                        entity.items = [];
-                        foreach (var (module, count, beacon) in modules) {
-                            if (!beacon) {
-                                entity.items[module.name] = count;
+                if (recipe.entity != null) {
+                    using (gui.EnterRowWithHelpIcon("Generate a blueprint for one of these buildings, with the recipe and internal modules set.")) {
+                        gui.allocator = RectAllocator.RemainingRow;
+                        if (gui.BuildButton("Create single building blueprint") && gui.CloseDropdown()) {
+                            BlueprintEntity entity = new BlueprintEntity { index = 1, name = recipe.entity.name };
+                            if (recipe.recipe is not Mechanics) {
+                                entity.recipe = recipe.recipe.name;
                             }
+
+                            var modules = recipe.parameters.modules.modules;
+                            if (modules != null) {
+                                entity.items = [];
+                                foreach (var (module, count, beacon) in modules) {
+                                    if (!beacon) {
+                                        entity.items[module.name] = count;
+                                    }
+                                }
+                            }
+                            BlueprintString bp = new BlueprintString(recipe.recipe.locName) { blueprint = { entities = { entity } } };
+                            _ = SDL.SDL_SetClipboardText(bp.ToBpString());
                         }
                     }
-                    BlueprintString bp = new BlueprintString(recipe.recipe.locName) { blueprint = { entities = { entity } } };
-                    _ = SDL.SDL_SetClipboardText(bp.ToBpString());
-                }
 
-                if (recipe.recipe.crafters.Length > 1) {
-                    BuildFavorites(gui, recipe.entity, "Add building to favorites");
+                    if (recipe.recipe.crafters.Length > 1) {
+                        BuildFavorites(gui, recipe.entity, "Add building to favorites");
+                    }
                 }
             });
 
@@ -451,7 +463,7 @@ goodsHaveNoProduction:;
             }
         }
 
-        private class IngredientsColumn(ProductionTableView view) : ProductionTableDataColumn(view, "Ingredients", 32f, 16f, 100f, hasMenu: false) {
+        private class IngredientsColumn(ProductionTableView view) : ProductionTableDataColumn(view, "Ingredients", 32f, 16f, 100f, hasMenu: false, nameof(Preferences.ingredientsColumWidth)) {
             public override void BuildElement(ImGui gui, RecipeRow recipe) {
                 var grid = gui.EnterInlineGrid(3f, 1f);
                 if (recipe.isOverviewMode) {
@@ -470,7 +482,7 @@ goodsHaveNoProduction:;
             }
         }
 
-        private class ProductsColumn(ProductionTableView view) : ProductionTableDataColumn(view, "Products", 12f, 10f, 70f, hasMenu: false) {
+        private class ProductsColumn(ProductionTableView view) : ProductionTableDataColumn(view, "Products", 12f, 10f, 70f, hasMenu: false, nameof(Preferences.productsColumWidth)) {
             public override void BuildElement(ImGui gui, RecipeRow recipe) {
                 var grid = gui.EnterInlineGrid(3f, 1f);
                 if (recipe.isOverviewMode) {
@@ -511,8 +523,8 @@ goodsHaveNoProduction:;
             private readonly VirtualScrollList<ProjectModuleTemplate> moduleTemplateList;
             private RecipeRow editingRecipeModules = null!; // null-forgiving: This is set as soon as we open a module dropdown.
 
-            public ModulesColumn(ProductionTableView view) : base(view, "Modules", 10f, 7f, 16f)
-                => moduleTemplateList = new VirtualScrollList<ProjectModuleTemplate>(15f, new Vector2(20f, 2.5f), ModuleTemplateDrawer, MainScreen.Instance.InputSystem, collapsible: true);
+            public ModulesColumn(ProductionTableView view) : base(view, "Modules", 10f, 7f, 16f, widthStorage: nameof(Preferences.modulesColumnWidth))
+                => moduleTemplateList = new VirtualScrollList<ProjectModuleTemplate>(15f, new Vector2(20f, 2.5f), ModuleTemplateDrawer, collapsible: true);
 
             private void ModuleTemplateDrawer(ImGui gui, ProjectModuleTemplate element, int index) {
                 var evt = gui.BuildContextMenuButton(element.name, icon: element.icon?.icon ?? default, disabled: !element.template.IsCompatibleWith(editingRecipeModules));
@@ -558,7 +570,7 @@ goodsHaveNoProduction:;
                         case Click.Left:
                             ShowModuleDropDown(gui, recipe);
                             break;
-                        case Click.Right when item is not null:
+                        case Click.Right when recipe.modules != null:
                             recipe.RecordUndo().RemoveFixedModules();
                             break;
                     }
@@ -594,7 +606,7 @@ goodsHaveNoProduction:;
                     .OrderByDescending(x => x.template.IsCompatibleWith(recipe))];
 
                 gui.ShowDropDown(dropGui => {
-                    if (dropGui.BuildButton("Use default modules").WithTooltip(dropGui, "Shortcut: right-click") && dropGui.CloseDropdown()) {
+                    if (recipe.modules != null && dropGui.BuildButton("Use default modules").WithTooltip(dropGui, "Shortcut: right-click") && dropGui.CloseDropdown()) {
                         recipe.RemoveFixedModules();
                     }
 
@@ -690,7 +702,7 @@ goodsHaveNoProduction:;
         }
 
         private void OpenProductDropdown(ImGui targetGui, Rect rect, Goods goods, float amount, ProductionLink? link, ProductDropdownType type, RecipeRow? recipe, ProductionTable context, Goods[]? variants = null) {
-            if (MainScreen.Instance.InputSystem.shift) {
+            if (InputSystem.Instance.shift) {
                 Project.current.preferences.SetSourceResource(goods, !goods.IsSourceResource());
                 targetGui.Rebuild();
                 return;
@@ -724,7 +736,7 @@ goodsHaveNoProduction:;
                 }
             }
 
-            if (MainScreen.Instance.InputSystem.control) {
+            if (InputSystem.Instance.control) {
                 bool isInput = type == ProductDropdownType.Fuel || type == ProductDropdownType.Ingredient || (type == ProductDropdownType.DesiredProduct && amount > 0);
                 var recipeList = isInput ? goods.production : goods.usages;
                 if (recipeList.SelectSingle(out var selected)) {

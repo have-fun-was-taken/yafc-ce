@@ -156,7 +156,7 @@ namespace Yafc {
                 }
 
                 if (checkMark != null && gui.isBuilding && checkMark(elem)) {
-                    gui.DrawIcon(Rect.Square(new Vector2(gui.lastRect.Right - 1f, gui.lastRect.Center.Y), 1.5f), Icon.Check, SchemeColor.Green);
+                    gui.DrawIcon(Rect.Square(gui.lastRect.Right - 1f, gui.lastRect.Center.Y, 1.5f), Icon.Check, SchemeColor.Green);
                 }
             }
 
@@ -167,7 +167,7 @@ namespace Yafc {
             using (gui.EnterGroup(default, RectAllocator.Stretch)) {
                 if (gui.BuildInlineObjectList(list, ordering, header, out var selected, count, checkMark, extra)) {
                     selectItem(selected);
-                    if (!multiple || !MainScreen.Instance.InputSystem.control) {
+                    if (!multiple || !InputSystem.Instance.control) {
                         _ = gui.CloseDropdown();
                     }
                 }
@@ -212,7 +212,7 @@ namespace Yafc {
                 Click clicked = gui.BuildFactorioObjectButton(goods, 3f, MilestoneDisplay.Contained, bgColor, useScale: useScale);
                 if (goods != null) {
                     gui.BuildText(DataUtils.FormatAmount(amount, unit), Font.text, false, RectAlignment.Middle, textColor);
-                    if (MainScreen.Instance.InputSystem.control && gui.BuildButton(gui.lastRect, SchemeColor.None, SchemeColor.Grey) == ButtonEvent.MouseOver) {
+                    if (InputSystem.Instance.control && gui.BuildButton(gui.lastRect, SchemeColor.None, SchemeColor.Grey) == ButtonEvent.MouseOver) {
                         ShowPrecisionValueTooltip(gui, amount, unit, goods);
                     }
                 }

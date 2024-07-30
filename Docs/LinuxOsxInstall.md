@@ -24,7 +24,7 @@ Note that [the version available on Flathub](https://flathub.org/apps/details/co
 ## OSX installation instructions
 Below are the instructions for the arm64 Macs. To use them for Intel Macs, please apply the changes to the folder `Yafc/lib/osx` instead of `Yafc/lib/osx-arm64`.
 - [Install dotnet core (v8.0 or later)](https://dotnet.microsoft.com/download)
-- Download the lua5.2.1 source, copy the .patch file and apply.
+- Download the lua5.2.1 source, copy the [.patch](https://github.com/shpaass/yafc-ce/blob/master/lua-5.2.1.patch) file and apply.
 - Modify the `src/Makefile` to include the following two lines. Note that the second line must start with a tab:
 ```
 liblua.dylib: $(CORE_O) $(LIB_O)

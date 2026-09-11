@@ -85,6 +85,15 @@ public class Preferences {
     public int shoppingDisplayState { get; set; } = 3;
 
     /// <summary>
+    /// The maximum number of rows the page tabs may wrap onto before the tab bar starts scrolling.
+    /// At 1, the tabs stay on a single row that scrolls horizontally.
+    /// </summary>
+    public int maxTabBarRows {
+        get;
+        set => field = Math.Max(1, value);
+    } = 1;
+
+    /// <summary>
     /// When enabled autosave every time the window loses focus.
     /// </summary>
     public bool autosaveEnabled { get; set; } = true;

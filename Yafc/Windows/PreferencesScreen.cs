@@ -170,6 +170,15 @@ public class PreferencesScreen : PseudoScreen {
             }
         }
 
+        using (gui.EnterRowWithHelpIcon(LSs.PrefsTabBarRowsHint)) {
+            gui.BuildText(LSs.PrefsTabBarRows, topOffset: 0.5f);
+            if (gui.BuildIntegerInput(Preferences.Instance.maxTabBarRows, out int newRowCount) && newRowCount >= 1) {
+                Preferences.Instance.maxTabBarRows = newRowCount;
+                Preferences.Instance.Save();
+                MainScreen.Instance.RebuildProjectView();
+            }
+        }
+
         using (gui.EnterRow()) {
             gui.BuildText(LSs.PrefsReactorLayout, topOffset: 0.5f);
             if (gui.BuildTextInput(settings.reactorSizeX + LSs.PrefsReactorXYSeparator + settings.reactorSizeY, out string newSize, null, delayed: true)) {

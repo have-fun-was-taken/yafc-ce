@@ -23,6 +23,7 @@ Version:
 Date:
     Features:
         - Allow planet selection for production tables, and complain if the selected recipe or entity can't be used there.
+        - Add a preference that allows the page tab bar to wrap onto multiple rows.
     Fixes:
 ----------------------------------------------------------------------------------------------------------------------
 Version: 2.20.0

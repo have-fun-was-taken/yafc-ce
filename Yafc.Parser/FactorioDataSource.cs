@@ -588,7 +588,7 @@ public static partial class FactorioDataSource {
                         continue;
                     }
 
-                    parsedDependencies.Add((match.Groups[2].Value, modifier == "?"));
+                    parsedDependencies.Add((match.Groups[2].Value, modifier == "?" || modifier == "+"));
                 }
             }
         }
